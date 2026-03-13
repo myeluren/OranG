@@ -197,3 +197,17 @@ export const registerRequestsAPI = {
   reject: (id: number, data: { note: string }) =>
     apiClient.post(`/api/v1/register-requests/${id}/reject`, data),
 }
+
+// Outline API - 大纲管理
+export const outlineAPI = {
+  // 获取大纲（优先从 Redis 获取）
+  getOutline: (projectId: number) => apiClient.get(`/api/v1/projects/${projectId}/outline`),
+  
+  // 临时保存大纲到 Redis（自动保存用）
+  saveToRedis: (projectId: number, outlineJson: string) => 
+    apiClient.put(`/api/v1/projects/${projectId}/outline/redis`, outlineJson),
+  
+  // 保存大纲到数据库（手动保存）
+  saveToDb: (projectId: number) => 
+    apiClient.post(`/api/v1/projects/${projectId}/outline/save-to-db`),
+}

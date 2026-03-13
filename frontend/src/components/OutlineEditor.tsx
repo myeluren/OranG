@@ -38,9 +38,19 @@ const generateLevelLabel = (level: number, index: number, parentLabel?: string):
     const labels = ['', '第一章', '第二章', '第三章', '第四章', '第五章', '第六章', '第七章', '第八章', '第九章', '第十章']
     return labels[index + 1] || `第${index + 1}章`
   } else if (level === 2) {
-    return parentLabel ? `${parentLabel}.${index + 1}` : `${index + 1}`
+    // 二级标题：基于父级章节号，如 1.1, 1.2, 2.1, 2.2
+    if (parentLabel) {
+      // 去掉"第"和"章"，提取数字部分
+      const numStr = parentLabel.replace('第', '').replace('章', '')
+      return `${numStr}.${index + 1}`
+    }
+    return `${index + 1}`
   } else if (level === 3) {
-    return parentLabel ? `${parentLabel}.${index + 1}` : `${index + 1}`
+    // 三级标题：基于父级编号，如 1.1.1, 1.1.2
+    if (parentLabel) {
+      return `${parentLabel}.${index + 1}`
+    }
+    return `${index + 1}`
   }
   return `${index + 1}`
 }

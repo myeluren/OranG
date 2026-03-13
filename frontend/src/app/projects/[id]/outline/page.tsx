@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useTheme } from 'next-themes'
-import { projectsAPI, subscriptionsAPI } from '@/lib/api'
+import { projectsAPI, subscriptionsAPI, outlineAPI } from '@/lib/api'
 import OutlineEditor from '@/components/OutlineEditor'
 
 // 类型定义
@@ -46,7 +46,35 @@ function OutlineContent() {
       setProject(projectRes.data)
       setSubscription(usageRes.data)
 
-      // 解析大纲 JSON
+      // 优先从 Redis 获取大纲
+      try {
+        const outlineRes = await outlineAPI.getOutline(projectId)
+        if (outlineRes.data.data && outlineRes.data.data.outline) {
+          const parsed = outlineRes.data.data.outline
+          // 递归为每个节点（包括子节点）生成唯一ID和设置level
+          const generateIds = (nodes: OutlineNode[], currentLevel: number, prefix = ''): OutlineNode[] => {
+            return nodes.map((node: OutlineNode, index: number) => {
+              const nodeId = node.id || `node_${prefix}${index}_${Date.now()}`
+              return {
+                ...node,
+                id: nodeId,
+                level: currentLevel, // 确保有正确的层级
+                children: node.children && node.children.length > 0
+                  ? generateIds(node.children, currentLevel + 1, `${prefix}${index}_`)
+                  : []
+              }
+            })
+          }
+          const withIds = generateIds(parsed, 1) // 从第一层开始
+          setOutline(withIds)
+          console.log('大纲来源:', outlineRes.data.data.source)
+          return
+        }
+      } catch (outlineError) {
+        console.log('Redis 中无大纲，尝试从 MySQL 获取')
+      }
+
+      // 从 MySQL 获取大纲
       if (projectRes.data.outline_json) {
         try {
           const parsed = JSON.parse(projectRes.data.outline_json)
@@ -77,6 +105,22 @@ function OutlineContent() {
     }
   }
 
+  // 自动保存到 Redis（防抖）
+  useEffect(() => {
+    if (outline.length === 0 || !project) return
+    
+    const timer = setTimeout(async () => {
+      try {
+        await outlineAPI.saveToRedis(projectId, JSON.stringify(outline))
+        console.log('已自动保存到 Redis')
+      } catch (error) {
+        console.error('自动保存失败:', error)
+      }
+    }, 1000) // 1秒防抖
+
+    return () => clearTimeout(timer)
+  }, [outline, projectId, project])
+
   // 处理大纲变化
   const handleOutlineChange = (newOutline: OutlineNode[]) => {
     setOutline(newOutline)
@@ -92,10 +136,8 @@ function OutlineContent() {
   const handleSaveOutline = async () => {
     setSaving(true)
     try {
-      await projectsAPI.updateProject(projectId, {
-        outline_json: JSON.stringify(outline),
-        status: 'outline_generated'
-      })
+      // 保存到 MySQL 数据库
+      await outlineAPI.saveToDb(projectId)
       router.push(`/projects/${projectId}/format`)
     } catch (error) {
       alert('保存失败')

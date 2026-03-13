@@ -3,12 +3,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import json
 
-from app.core.security import get_db, get_current_user
+from app.core.security import get_db, get_current_user, get_redis
 from app.models import User, Project, LLMConfig
 from app.services.llm_service import LLMService
 from app.utils.llm_config import get_llm_config
 
 router = APIRouter(prefix="/projects", tags=["大纲生成"])
+
+# Redis key 前缀
+OUTLINE_REDIS_PREFIX = "outline:"
+OUTLINE_TTL = 7 * 24 * 60 * 60  # 7天过期
 
 
 def parse_tender_file(file_path: str) -> str:
@@ -215,7 +219,7 @@ async def save_outline(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """保存大纲"""
+    """保存大纲到数据库（手动保存）"""
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
 
@@ -228,8 +232,132 @@ async def save_outline(
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="大纲格式无效")
 
+    # 保存到 MySQL
     project.outline_json = outline_json
+    project.status = "outline_generated"
     await db.commit()
+
+    # 同时保存到 Redis 作为缓存
+    redis = await get_redis()
+    redis_key = f"{OUTLINE_REDIS_PREFIX}{project_id}"
+    await redis.setex(redis_key, OUTLINE_TTL, outline_json)
+
+    return {
+        "code": 0,
+        "message": "大纲保存成功",
+        "data": None
+    }
+
+
+@router.get("/{project_id}/outline")
+async def get_outline(
+    project_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """获取大纲（优先从 Redis，fallback 到 MySQL）"""
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
+
+    if not project:
+        raise HTTPException(status_code=404, detail="项目不存在")
+
+    # 优先从 Redis 获取
+    redis = await get_redis()
+    redis_key = f"{OUTLINE_REDIS_PREFIX}{project_id}"
+    cached_outline = await redis.get(redis_key)
+
+    if cached_outline:
+        return {
+            "code": 0,
+            "message": "success",
+            "data": {
+                "outline": json.loads(cached_outline),
+                "source": "redis"
+            }
+        }
+
+    # 从 MySQL 获取
+    if project.outline_json:
+        return {
+            "code": 0,
+            "message": "success",
+            "data": {
+                "outline": json.loads(project.outline_json),
+                "source": "mysql"
+            }
+        }
+
+    return {
+        "code": 0,
+        "message": "success",
+        "data": {
+            "outline": None,
+            "source": "none"
+        }
+    }
+
+
+@router.put("/{project_id}/outline/redis")
+async def save_outline_to_redis(
+    project_id: int,
+    outline_json: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """临时保存大纲到 Redis（自动保存用）"""
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
+
+    if not project:
+        raise HTTPException(status_code=404, detail="项目不存在")
+
+    # 验证JSON格式
+    try:
+        outline = json.loads(outline_json)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="大纲格式无效")
+
+    # 保存到 Redis
+    redis = await get_redis()
+    redis_key = f"{OUTLINE_REDIS_PREFIX}{project_id}"
+    await redis.setex(redis_key, OUTLINE_TTL, outline_json)
+
+    return {
+        "code": 0,
+        "message": "大纲已临时保存",
+        "data": None
+    }
+
+
+@router.post("/{project_id}/outline/save-to-db")
+async def save_outline_to_db(
+    project_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """将 Redis 中的大纲保存到数据库（手动保存）"""
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
+
+    if not project:
+        raise HTTPException(status_code=404, detail="项目不存在")
+
+    # 从 Redis 获取
+    redis = await get_redis()
+    redis_key = f"{OUTLINE_REDIS_PREFIX}{project_id}"
+    outline_json = await redis.get(redis_key)
+
+    if not outline_json:
+        raise HTTPException(status_code=400, detail="没有找到临时保存的大纲，请先生成大纲")
+
+    # 保存到 MySQL
+    project.outline_json = outline_json
+    project.status = "outline_generated"
+    await db.commit()
+
+    # 可选：保留 Redis 缓存或清除
+    # await redis.delete(redis_key)
 
     return {
         "code": 0,
