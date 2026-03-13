@@ -185,6 +185,35 @@ async def cancel_task(
     if current_user.role == "user" and task.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="无权限")
 
+    # 计算需要扣除的字数
+    deduct_words = task.total_words_generated
+
+    # 扣除已消耗的字数到订阅额度中
+    if deduct_words > 0:
+        sub_result = await db.execute(
+            select(Subscription).where(
+                Subscription.tenant_id == task.tenant_id,
+                Subscription.status == "active"
+            )
+        )
+        subscription = sub_result.scalar_one_or_none()
+        if subscription:
+            # 增加已使用字数（相当于扣除）
+            subscription.period_used_words = subscription.period_used_words + deduct_words
+            
+            # 记录字数流水
+            transaction = WordTransaction(
+                tenant_id=task.tenant_id,
+                subscription_id=subscription.id,
+                user_id=current_user.id,
+                task_id=task.id,
+                type="deduct",
+                amount=deduct_words,
+                balance_after=subscription.period_used_words,
+                remark=f"任务取消，扣除已生成字数 {deduct_words} 字"
+            )
+            db.add(transaction)
+
     task.status = "cancelled"
     task.completed_at = datetime.utcnow()
 
@@ -196,7 +225,7 @@ async def cancel_task(
 
     await db.commit()
 
-    return {"code": 0, "message": "任务已取消", "data": None}
+    return {"code": 0, "message": f"任务已取消，已扣除 {deduct_words} 字", "data": {"deducted_words": deduct_words}}
 
 
 @router.post("/{task_id}/regenerate")
