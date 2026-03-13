@@ -197,7 +197,7 @@ function FormatContent() {
       setSubscription(usageRes.data)
 
       // 获取项目大纲用于各章分配
-      if (projectRes.data.outlines) {
+      if (projectRes.data.outline_json) {
         try {
           const outlines = JSON.parse(projectRes.data.outlines)
           setProjectOutlines(outlines)

@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from typing import Any
 import json
 
 from app.core.security import get_db, get_current_user, get_redis
@@ -301,11 +302,17 @@ async def get_outline(
 @router.put("/{project_id}/outline/redis")
 async def save_outline_to_redis(
     project_id: int,
-    outline_json: str,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    outline_data: Any = Body(...)
 ):
     """临时保存大纲到 Redis（自动保存用）"""
+    # 转换为 JSON 字符串
+    if isinstance(outline_data, str):
+        outline_json = outline_data
+    else:
+        outline_json = json.dumps(outline_data, ensure_ascii=False)
+        
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
 

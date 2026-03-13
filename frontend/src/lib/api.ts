@@ -205,7 +205,7 @@ export const outlineAPI = {
   
   // 临时保存大纲到 Redis（自动保存用）
   saveToRedis: (projectId: number, outlineJson: string) => 
-    apiClient.put(`/api/v1/projects/${projectId}/outline/redis`, outlineJson),
+    apiClient.put(`/api/v1/projects/${projectId}/outline/redis`, JSON.stringify(outlineJson)),
   
   // 保存大纲到数据库（手动保存）
   saveToDb: (projectId: number) => 
