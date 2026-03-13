@@ -1,0 +1,110 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-bg-base: #F0F5FF;
+  --color-bg-surface: #FFFFFF;
+  --color-bg-sidebar: #1A2744;
+  --color-primary: #0057FF;
+  --color-primary-hover: #0040CC;
+  --color-accent: #00C2FF;
+  --color-success: #00C896;
+  --color-warning: #FF9500;
+  --color-danger: #FF3B5C;
+  --color-text-primary: #0D1B3E;
+  --color-text-secondary: #4A6087;
+  --color-border: #C8D8F0;
+}
+
+.dark {
+  --color-bg-base: #080E1C;
+  --color-bg-surface: #0F1829;
+  --color-bg-sidebar: #060C18;
+  --color-primary: #00C2FF;
+  --color-primary-hover: #33D0FF;
+  --color-accent: #7B5CFF;
+  --color-success: #00E5A0;
+  --color-warning: #FFB340;
+  --color-danger: #FF5C7A;
+  --color-text-primary: #E8F0FF;
+  --color-text-secondary: #7A96C2;
+  --color-border: #1E2F50;
+}
+
+body {
+  background-color: var(--color-bg-base);
+  color: var(--color-text-primary);
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-[var(--color-primary)] text-white px-4 py-2 rounded-lg font-medium transition-colors;
+  }
+  .btn-primary:hover {
+    @apply bg-[var(--color-primary-hover)];
+  }
+
+  .btn-secondary {
+    @apply bg-[var(--color-bg-surface)] text-[var(--color-primary)] border border-[var(--color-border)] px-4 py-2 rounded-lg font-medium transition-colors;
+  }
+  .btn-secondary:hover {
+    @apply bg-[var(--color-bg-base)];
+  }
+
+  .btn-danger {
+    @apply bg-[var(--color-danger)] text-white px-4 py-2 rounded-lg font-medium transition-colors;
+  }
+
+  .input {
+    @apply w-full px-3 py-2 border border-[var(--color-border)] rounded-lg bg-[var(--color-bg-surface)] text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-primary)];
+  }
+
+  .card {
+    @apply bg-[var(--color-bg-surface)] rounded-xl shadow-sm border border-[var(--color-border)];
+  }
+}
+
+/* Scrollbar */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-bg-base);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-secondary);
+}
+
+/* Toast 动画 */
+@keyframes slide-in {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-in {
+  animation: slide-in 0.3s ease-out;
+}

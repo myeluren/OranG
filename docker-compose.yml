@@ -1,0 +1,75 @@
+services:
+  # MySQL数据库
+  #mysql:
+  #   image: mysql:8.0
+  #   container_name: bidai_mysql
+  #   restart: always
+  #   ports:
+  #     - "3306:3306"
+  #   environment:
+  #     - MYSQL_ROOT_PASSWORD=root2026
+  #     - MYSQL_DATABASE=bidai
+  #     - MYSQL_USER=bidai
+  #     - MYSQL_PASSWORD=bidai2026
+  #   volumes:
+  #     - mysql_data:/var/lib/mysql
+  #     - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+  #   command: --default-authentication-plugin=mysql_native_password
+
+  # # Redis缓存
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: bidai_redis
+  #   restart: always
+  #   ports:
+  #     - "6379:6379"
+  #   volumes:
+  #     - redis_data:/data 
+      
+
+  # 后端API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: bidai_backend
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=mysql+aiomysql://bidai:bidai2026@mysql:3306/bidai?charset=utf8mb4
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=your-secret-key-change-in-production-please
+      - ACCESS_TOKEN_EXPIRE_MINUTES=1440
+      - CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+      # 新增代理配置，host.docker.internal 指向您的 Windows 宿主机
+      - HTTP_PROXY=http://host.docker.internal:7890
+      - HTTPS_PROXY=http://host.docker.internal:7890
+      - NO_PROXY=localhost,127.0.0.1,mysql,redis
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - mysql
+      - redis
+    volumes:
+      - ./backend:/app
+      - uploads:/app/uploads
+
+  # 前端
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: bidai_frontend
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    depends_on:
+      - backend
+
+volumes:
+  mysql_data:
+  redis_data:
+  uploads:
