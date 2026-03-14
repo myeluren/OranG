@@ -294,8 +294,8 @@ function FormatContent() {
       // 2. 创建生成任务，开始调用大模型生成
       await tasksAPI.createTask(projectId)
 
-      // 3. 跳转到工作台页面
-      router.push('/dashboard')
+      // 3. 跳转到生成进度页
+      router.push(`/projects/${projectId}/generate`)
     } catch (error: any) {
       console.error('Failed to start generation:', error)
       const errorMsg = error?.response?.data?.detail || '开始生成失败'

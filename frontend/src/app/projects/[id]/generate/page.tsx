@@ -226,23 +226,53 @@ export default function GeneratePage() {
         {/* 主内容区 */}
         <main className="flex-1 p-6">
           <div className="max-w-4xl">
-            {/* 步骤指示 */}
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center">
-                {['上传 ✓', '大纲 ✓', '格式 ✓', '生成中...'].map((s, i) => (
-                  <div key={i} className="flex items-center">
-                    <span className={`text-sm ${i < 3 ? 'text-green-600' : 'text-[var(--color-primary)]'}`}>{s}</span>
-                    {i < 3 && <span className="mx-2 text-gray-300">→</span>}
-                  </div>
-                ))}
+            {/* 步骤进度指示器 */}
+            <div className="mb-8">
+              <div className="flex items-center justify-center gap-2 text-sm">
+                <span className="flex items-center gap-1 text-green-600">
+                  <span className="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center">✓</span>
+                  上传文件
+                </span>
+                <span className="mx-2 text-gray-300">──</span>
+                <span className="flex items-center gap-1 text-green-600">
+                  <span className="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center">✓</span>
+                  确认大纲
+                </span>
+                <span className="mx-2 text-gray-300">──</span>
+                <span className="flex items-center gap-1 text-green-600">
+                  <span className="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center">✓</span>
+                  格式设置
+                </span>
+                <span className="mx-2 text-gray-300">──</span>
+                <span className="flex items-center gap-1 text-[var(--color-primary)] font-medium">
+                  <span className="w-6 h-6 rounded-full bg-[var(--color-primary)] text-white flex items-center justify-center">4</span>
+                  生成文档
+                </span>
               </div>
-              <Link href={`/projects/new?step=3&projectId=${projectId}`} className="text-sm text-gray-500 hover:text-gray-700">
+            </div>
+
+            <div className="flex justify-end mb-4">
+              <Link href={`/projects/${projectId}/format`} className="text-sm text-gray-500 hover:text-gray-700">
                 ← 返回格式设置
               </Link>
             </div>
 
             <div className="bg-[var(--color-bg-surface)] rounded-lg shadow p-6">
               <h1 className="text-lg font-semibold mb-6 text-[var(--color-text-primary)]">文档生成</h1>
+
+              {/* 无任务时的空状态 */}
+              {!task && !loading && (
+                <div className="text-center py-12">
+                  <div className="text-4xl mb-4">📋</div>
+                  <div className="text-xl font-medium mb-2 text-[var(--color-text-primary)]">尚未开始生成</div>
+                  <div className="text-sm text-[var(--color-text-secondary)] mb-6">
+                    请先在格式设置页面完成配置并开始生成
+                  </div>
+                  <Link href={`/projects/${projectId}/format`} className="px-4 py-2 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white rounded-lg">
+                    去格式设置
+                  </Link>
+                </div>
+              )}
 
               {/* 进度条 */}
               {task && (

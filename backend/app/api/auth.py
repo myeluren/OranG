@@ -10,8 +10,7 @@ from app.core.security import (
     get_current_user, get_password_hash
 )
 from app.core.config import settings
-from app.models import User
-from app.models import Tenant
+from app.models import User, Tenant, UserRegisterRequest
 from app.schemas import (
     LoginRequest, RegisterRequest, ChangePasswordRequest,
     TokenResponse, UsernameCheckResponse, UserResponse
