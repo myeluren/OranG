@@ -18,6 +18,7 @@ interface OutlineNode {
 function OutlineContent() {
   const router = useRouter()
   const params = useParams()
+  const searchParams = useSearchParams()
   const { theme, setTheme } = useTheme()
   const [user, setUser] = useState<any>(null)
   const [project, setProject] = useState<any>(null)
@@ -26,6 +27,39 @@ function OutlineContent() {
   const [saving, setSaving] = useState(false)
   const [outline, setOutline] = useState<OutlineNode[]>([])
   const projectId = parseInt(params.id as string)
+
+  // 优先从 URL 参数获取大纲数据（同步操作，无需等待）
+  const outlineFromUrl = searchParams.get('outline')
+
+  // 初始化：从 URL 参数同步加载大纲
+  useEffect(() => {
+    if (outlineFromUrl) {
+      try {
+        const parsed = JSON.parse(decodeURIComponent(outlineFromUrl))
+        const generateIds = (nodes: OutlineNode[], currentLevel: number, prefix = ''): OutlineNode[] => {
+          return nodes.map((node: OutlineNode, index: number) => {
+            const nodeId = node.id || `node_${prefix}${index}_${Date.now()}`
+            return {
+              ...node,
+              id: nodeId,
+              level: currentLevel,
+              children: node.children && node.children.length > 0
+                ? generateIds(node.children, currentLevel + 1, `${prefix}${index}_`)
+                : []
+            }
+          })
+        }
+        const withIds = generateIds(parsed, 1)
+        setOutline(withIds)
+        // 大纲已准备好，先设置为 false 让页面显示内容
+        setLoading(false)
+        // 异步保存到 Redis 缓存
+        outlineAPI.saveToRedis(projectId, JSON.stringify(parsed)).catch(e => console.error('保存到 Redis 失败', e))
+      } catch (e) {
+        console.error('解析 URL 大纲失败', e)
+      }
+    }
+  }, [outlineFromUrl, projectId])
 
   useEffect(() => {
     const userData = localStorage.getItem('user')
@@ -45,6 +79,12 @@ function OutlineContent() {
       ])
       setProject(projectRes.data)
       setSubscription(usageRes.data)
+
+      // URL 参数已在上方 useEffect 中处理，这里只处理从 Redis/MySQL 获取
+      if (outlineFromUrl) {
+        // 已从 URL 加载大纲，不需要再从 Redis/MySQL 获取
+        return
+      }
 
       // 优先从 Redis 获取大纲
       try {
@@ -218,7 +258,7 @@ function OutlineContent() {
         {/* 主内容区 */}
         <main className="flex-1 p-6">
           {/* 步骤导航 */}
-          <div className="mb-6">
+          <div className="mb-4">
             <div className="flex items-center justify-center gap-2 text-sm">
               <span className="flex items-center gap-1 text-green-600">
                 <span>✓</span> 上传文件
@@ -232,6 +272,12 @@ function OutlineContent() {
               <span className="text-gray-400 mx-2">→</span>
               <span className="text-gray-400">④ 生成</span>
             </div>
+          </div>
+
+          {/* 项目名称 */}
+          <div className="mb-6 p-4 bg-[var(--color-bg-base)] rounded-lg">
+            <div className="text-sm text-[var(--color-text-secondary)]">项目名称</div>
+            <div className="text-lg font-medium">{project?.title || '加载中...'}</div>
           </div>
 
           <div className="card p-6">
@@ -261,7 +307,7 @@ function OutlineContent() {
             )}
 
             <div className="flex gap-4">
-              <Link href={`/projects/${projectId}`} className="btn-secondary">
+              <Link href="/projects/new" className="btn-secondary">
                 ← 返回
               </Link>
               <button onClick={handleSaveOutline} disabled={saving || !project?.outline_json} className="btn-primary">

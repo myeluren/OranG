@@ -7,10 +7,10 @@ from app.core.security import get_db, get_current_user
 from app.models import User, Project, GenerationTask, TaskCheckpoint
 from app.services.export_docx import export_to_word
 
-router = APIRouter(prefix="/tasks", tags=["文档导出"])
+router = APIRouter(prefix="/export", tags=["文档导出"])
 
 
-@router.get("/{task_id}/export/docx")
+@router.get("/{task_id}/docx")
 async def export_task_to_word(
     task_id: int,
     current_user: User = Depends(get_current_user),

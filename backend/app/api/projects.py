@@ -8,7 +8,7 @@ import aiofiles
 
 from app.core.security import get_db, get_current_user
 from app.core.config import settings
-from app.models import User, Project, Subscription, GenerationTask
+from app.models import User, Project, Subscription, GenerationTask, TaskCheckpoint
 from app.schemas import ProjectCreate, ProjectUpdate, ProjectResponse
 from datetime import datetime
 import logging
@@ -386,3 +386,122 @@ async def reset_project(
     await db.refresh(project)
 
     return {"code": 0, "message": "项目已重置", "data": ProjectResponse.model_validate(project)}
+
+
+# ============== 文档内容管理 API ==============
+
+@router.get("/{project_id}/content")
+async def get_project_content(
+    project_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """获取项目的生成内容"""
+    # 获取项目
+    result = await db.execute(select(Project).where(Project.id == project_id).limit(1))
+    project = result.scalar_one_or_none()
+
+    if not project:
+        raise HTTPException(status_code=404, detail="项目不存在")
+
+    # 权限检查
+    if current_user.role == "user" and project.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="无权限")
+
+    if current_user.role == "tenant_admin" and project.tenant_id != current_user.tenant_id:
+        raise HTTPException(status_code=403, detail="无权限")
+
+    # 获取该项目已完成的任务
+    result = await db.execute(
+        select(GenerationTask).where(
+            GenerationTask.project_id == project_id,
+            GenerationTask.status == "completed"
+        ).order_by(GenerationTask.id.desc()).limit(1)
+    )
+    task = result.scalar_one_or_none()
+
+    if not task:
+        return {"code": 0, "data": {"task": None, "chapters": []}}
+
+    # 获取所有章节内容
+    result = await db.execute(
+        select(TaskCheckpoint).where(
+            TaskCheckpoint.task_id == task.id
+        ).order_by(TaskCheckpoint.chapter_index)
+    )
+    checkpoints = result.scalars().all()
+
+    chapters = []
+    for cp in checkpoints:
+        chapters.append({
+            "chapter_index": cp.chapter_index,
+            "chapter_title": cp.chapter_title,
+            "content": cp.content,
+            "word_count": cp.word_count
+        })
+
+    return {
+        "code": 0,
+        "data": {
+            "task_id": task.id,
+            "task_status": task.status,
+            "chapters": chapters
+        }
+    }
+
+
+@router.put("/{project_id}/content")
+async def save_project_content(
+    project_id: int,
+    chapter_index: int,
+    content: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """保存编辑后的章节内容"""
+    # 获取项目
+    result = await db.execute(select(Project).where(Project.id == project_id).limit(1))
+    project = result.scalar_one_or_none()
+
+    if not project:
+        raise HTTPException(status_code=404, detail="项目不存在")
+
+    # 权限检查
+    if current_user.role == "user" and project.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="无权限")
+
+    if current_user.role == "tenant_admin" and project.tenant_id != current_user.tenant_id:
+        raise HTTPException(status_code=403, detail="无权限")
+
+    # 获取该项目的任务
+    result = await db.execute(
+        select(GenerationTask).where(
+            GenerationTask.project_id == project_id,
+            GenerationTask.status == "completed"
+        ).order_by(GenerationTask.id.desc()).limit(1)
+    )
+    task = result.scalar_one_or_none()
+
+    if not task:
+        raise HTTPException(status_code=404, detail="没有已完成的任务")
+
+    # 查找并更新章节内容
+    result = await db.execute(
+        select(TaskCheckpoint).where(
+            TaskCheckpoint.task_id == task.id,
+            TaskCheckpoint.chapter_index == chapter_index
+        )
+    )
+    checkpoint = result.scalar_one_or_none()
+
+    if not checkpoint:
+        raise HTTPException(status_code=404, detail="章节不存在")
+
+    # 更新内容
+    checkpoint.content = content
+    checkpoint.word_count = len(content)
+
+    await db.commit()
+    await db.refresh(checkpoint)
+
+    return {"code": 0, "message": "内容已保存", "data": {"word_count": checkpoint.word_count}}

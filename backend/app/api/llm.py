@@ -220,15 +220,11 @@ async def test_llm_connection(
 
         # 获取环境变量中的代理
         env_proxy = os.getenv("HTTP_PROXY") or os.getenv("HTTPS_PROXY") or os.getenv("http_proxy") or os.getenv("https_proxy")
-        
-        # 尝试方案列表：1. 环境代理(如有)  2. 宿主机常用代理端口  3. 直连
+
+        # 尝试方案列表：1. 环境代理(如有)  2. 直连
         proxy_attempts = []
         if env_proxy:
             proxy_attempts.append(env_proxy)
-        
-        # 添加一些常见的宿主机代理地址作为备选
-        proxy_attempts.append("http://host.docker.internal:7890")
-        proxy_attempts.append("http://host.docker.internal:17890") # 针对您日志中出现的17890
         proxy_attempts.append(None) # 最后尝试直连
 
         last_error = ""

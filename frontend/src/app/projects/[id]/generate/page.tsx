@@ -42,13 +42,19 @@ export default function GeneratePage() {
         tasksAPI.getTasks(),
         subscriptionsAPI.getUsage()
       ])
+      console.log('tasksRes:', tasksRes)
+      console.log('tasksRes.data:', tasksRes.data)
       setProject(projRes.data)
       setSubscription(usageRes.data)
       const projectTask = tasksRes.data?.find((t: any) => t.project_id === projectId)
 
-      if (projectTask) {
-        setTask(projectTask)
-        const checkpointRes = await tasksAPI.getCheckpoints(projectTask.id)
+      // 找到最新的任务（按ID排序）
+      const allTasksForProject = tasksRes.data?.filter((t: any) => t.project_id === projectId) || []
+      const latestTask = allTasksForProject.sort((a: any, b: any) => b.id - a.id)[0]
+
+      if (latestTask) {
+        setTask(latestTask)
+        const checkpointRes = await tasksAPI.getCheckpoints(latestTask.id)
         setCheckpoints(checkpointRes.data?.data || [])
       } else {
         setTask(null)
@@ -365,6 +371,43 @@ export default function GeneratePage() {
                     <button className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg">
                       下载 Word
                     </button>
+                  </div>
+                </div>
+              )}
+
+              {/* 任务状态和错误信息显示 */}
+              {task && task.status === 'failed' && (
+                <div className="mt-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-red-600 text-xl">⚠️</span>
+                    <span className="font-medium text-red-700 dark:text-red-300">生成失败</span>
+                  </div>
+                  <div className="text-red-600 dark:text-red-400 text-sm mb-3">
+                    {task.error_message || '任务执行过程中发生未知错误'}
+                  </div>
+                  <div className="flex gap-2">
+                    <Link
+                      href={`/projects/${projectId}/format`}
+                      className="px-3 py-1.5 text-sm bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 rounded hover:bg-red-200 dark:hover:bg-red-900/60"
+                    >
+                      重新生成
+                    </Link>
+                    <button
+                      onClick={() => navigator.clipboard.writeText(task.error_message || '')}
+                      className="px-3 py-1.5 text-sm border border-red-300 dark:border-red-700 text-red-700 dark:text-red-300 rounded hover:bg-red-100 dark:hover:bg-red-900/40"
+                    >
+                      复制错误信息
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* 任务正常状态显示 */}
+              {task && task.status !== 'failed' && (
+                <div className="mt-4 p-3 bg-gray-100 dark:bg-gray-800 rounded-lg text-sm">
+                  <div className="text-gray-500 dark:text-gray-400 mt-1">
+                    已完成: {task.completed_chapters}/{task.total_chapters} 章节,
+                    已生成: {task.total_words_generated} 字
                   </div>
                 </div>
               )}

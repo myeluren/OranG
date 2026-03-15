@@ -1,6 +1,6 @@
 import axios, { AxiosResponse } from 'axios'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8002'
 
 const apiClient = axios.create({
   baseURL: API_URL,
@@ -155,7 +155,7 @@ export const projectsAPI = {
 export const tasksAPI = {
   // 创建内容生成任务 (调用大模型生成)
   createTask: (projectId: number) =>
-    apiClient.post('/api/v1/tasks', null, { params: { project_id: projectId } }),
+    apiClient.post('/api/v1/task-create', null, { params: { project_id: projectId } }),
   getTasks: (params?: { skip?: number; limit?: number; status_filter?: string }) =>
     apiClient.get('/api/v1/tasks', { params }),
   getTask: (id: number) => apiClient.get(`/api/v1/tasks/${id}`),
@@ -202,12 +202,31 @@ export const registerRequestsAPI = {
 export const outlineAPI = {
   // 获取大纲（优先从 Redis 获取）
   getOutline: (projectId: number) => apiClient.get(`/api/v1/projects/${projectId}/outline`),
-  
+
   // 临时保存大纲到 Redis（自动保存用）
-  saveToRedis: (projectId: number, outlineJson: string) => 
+  saveToRedis: (projectId: number, outlineJson: string) =>
     apiClient.put(`/api/v1/projects/${projectId}/outline/redis`, JSON.stringify(outlineJson)),
-  
+
   // 保存大纲到数据库（手动保存）
-  saveToDb: (projectId: number) => 
+  saveToDb: (projectId: number) =>
     apiClient.post(`/api/v1/projects/${projectId}/outline/save-to-db`),
+}
+
+// Content API - 文档内容管理
+export const contentAPI = {
+  // 获取项目已完成的任务内容
+  getProjectContent: (projectId: number) => apiClient.get(`/api/v1/projects/${projectId}/content`),
+
+  // 保存编辑后的内容
+  saveContent: (projectId: number, chapterIndex: number, content: string) =>
+    apiClient.put(`/api/v1/projects/${projectId}/content`, {
+      chapter_index: chapterIndex,
+      content
+    }),
+
+  // 导出 Word 文档
+  exportWord: (taskId: number) =>
+    apiClient.get(`/api/v1/export/${taskId}/docx`, {
+      responseType: 'blob'
+    }),
 }

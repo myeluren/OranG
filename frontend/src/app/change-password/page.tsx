@@ -56,7 +56,7 @@ export default function ChangePasswordPage() {
     try {
       const token = localStorage.getItem('access_token')
       const response = await axios.post(
-        'http://localhost:8000/api/v1/auth/change-password',
+        'http://localhost:8002/api/v1/auth/change-password',
         {
           old_password: formData.oldPassword || undefined,
           new_password: formData.newPassword

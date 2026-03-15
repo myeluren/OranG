@@ -81,7 +81,7 @@ export default function DashboardPage() {
     router.push('/login')
   }
 
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8002'
 
   const handleDeleteProject = async (id: number) => {
     if (!confirm('确定要删除这个项目吗？此操作不可恢复。')) return
@@ -157,25 +157,21 @@ export default function DashboardPage() {
       case 'cancelled':
         // 已完成或已取消的项目，完全重置
         confirmMessage = '确定要重新生成吗？这将重置项目并重新开始生成流程。'
-        targetStep = 1
         break
       case 'outline_generated':
-        // 待设置状态，跳转到步骤2（大纲确认）
+        // 大纲已生成，确认编辑大纲
         confirmMessage = '确定要重新编辑大纲吗？'
-        targetStep = 2
         break
       case 'format_set':
-        // 待生成状态，跳转到步骤3（格式设置）
+        // 格式已设置，确认重新设置格式
         confirmMessage = '确定要重新设置格式吗？'
-        targetStep = 3
         break
       case 'generating':
         // 生成中状态，跳转到生成进度页面
         router.push(`/projects/${project.id}/generate`)
         return
       default:
-        confirmMessage = '确定要重新生成吗？'
-        targetStep = 1
+        confirmMessage = '确定要重新开始吗？'
     }
 
     if (!confirm(confirmMessage)) return
@@ -185,8 +181,22 @@ export default function DashboardPage() {
       if (project.status === 'completed' || project.status === 'cancelled') {
         await projectsAPI.resetProject(project.id)
       }
-      // 跳转到新项目页面的对应步骤
-      router.push(`/projects/new?step=${targetStep}&projectId=${project.id}`)
+
+      // 根据项目状态跳转到对应的独立页面
+      const status = project.status === 'completed' || project.status === 'cancelled' ? 'draft' : project.status
+      if (status === 'draft') {
+        if (project.tender_file_name) {
+          // 有文件，跳转到大纲页面
+          router.push(`/projects/${project.id}/outline`)
+        } else {
+          // 无文件，跳转到新建项目页面
+          router.push(`/projects/new?projectId=${project.id}`)
+        }
+      } else if (status === 'outline_generated') {
+        router.push(`/projects/${project.id}/outline`)
+      } else if (status === 'format_set') {
+        router.push(`/projects/${project.id}/format`)
+      }
     } catch (error) {
       alert('操作失败')
     }
@@ -231,13 +241,13 @@ export default function DashboardPage() {
     if (status === 'draft') {
       if (!project.tender_file_name) {
         return (
-          <button onClick={() => router.push(`/projects/new?step=1&projectId=${project.id}`)} className="text-[var(--color-primary)] hover:underline text-sm font-medium">
+          <button onClick={() => router.push(`/projects/new?projectId=${project.id}`)} className="text-[var(--color-primary)] hover:underline text-sm font-medium">
             上传文件
           </button>
         )
       }
       return (
-        <button onClick={() => router.push(`/projects/new?step=1&projectId=${project.id}`)} className="text-[var(--color-primary)] hover:underline text-sm font-medium">
+        <button onClick={() => router.push(`/projects/${project.id}/outline`)} className="text-[var(--color-primary)] hover:underline text-sm font-medium">
           生成大纲
         </button>
       )
@@ -247,13 +257,13 @@ export default function DashboardPage() {
     switch (status) {
       case 'outline_generated':
         return (
-          <button onClick={() => router.push(`/projects/new?step=2&projectId=${project.id}`)} className="text-[var(--color-primary)] hover:underline text-sm font-medium">
+          <button onClick={() => router.push(`/projects/${project.id}/outline`)} className="text-[var(--color-primary)] hover:underline text-sm font-medium">
             确认大纲
           </button>
         )
       case 'format_set':
         return (
-          <button onClick={() => router.push(`/projects/new?step=3&projectId=${project.id}`)} className="text-[var(--color-primary)] hover:underline text-sm font-medium">
+          <button onClick={() => router.push(`/projects/${project.id}/format`)} className="text-[var(--color-primary)] hover:underline text-sm font-medium">
             开始生成
           </button>
         )

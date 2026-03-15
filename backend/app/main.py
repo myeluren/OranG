@@ -1,6 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
+import logging
+
+# 配置日志
+logging.basicConfig(level=logging.WARNING, format='%(levelname)s: %(message)s')
+logger = logging.getLogger(__name__)
 
 from app.core.config import settings
 from app.core.database import Base
@@ -25,18 +30,9 @@ async def startup_event():
 
 
 # CORS - 允许所有来源（开发环境）
-# 注意：当 allow_credentials=True 时，不能使用通配符 "*"
-# 需要明确列出允许的来源
-all_origins = [
-    "http://localhost:3000",
-    "http://localhost:3001",
-    "http://127.0.0.1:3000",
-    "http://127.0.0.1:3001",
-]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=all_origins,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -49,11 +45,11 @@ app.include_router(tenants.router, prefix=settings.API_V1_PREFIX)
 app.include_router(plans.router, prefix=settings.API_V1_PREFIX)
 app.include_router(subscriptions.router, prefix=settings.API_V1_PREFIX)
 app.include_router(projects.router, prefix=settings.API_V1_PREFIX)
-app.include_router(tasks.router, prefix=settings.API_V1_PREFIX)
+# app.include_router(content.router, prefix=settings.API_V1_PREFIX)  # 禁用，已合并到 tasks.py
+app.include_router(tasks.router, prefix=settings.API_V1_PREFIX)  # 任务管理（含创建任务和执行逻辑）
 app.include_router(llm.router, prefix=settings.API_V1_PREFIX)
 app.include_router(admin.router, prefix=settings.API_V1_PREFIX)
 app.include_router(outline.router, prefix=settings.API_V1_PREFIX)
-app.include_router(content.router, prefix=settings.API_V1_PREFIX)
 app.include_router(export.router, prefix=settings.API_V1_PREFIX)
 
 

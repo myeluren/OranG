@@ -158,6 +158,7 @@ function FormatContent() {
   const [template, setTemplate] = useState('government')
   const [showStyles, setShowStyles] = useState(true)
   const [showChapterModal, setShowChapterModal] = useState(false)
+  const [errorModal, setErrorModal] = useState<{ show: boolean; title: string; message: string; solution?: string }>({ show: false, title: '', message: '' })
   const [editingStyles, setEditingStyles] = useState<TemplateStyle>(templates.government.styles)
   const [chapters, setChapters] = useState<ChapterDistribution[]>([])
   const [projectOutlines, setProjectOutlines] = useState<any[]>([])
@@ -199,7 +200,7 @@ function FormatContent() {
       // 获取项目大纲用于各章分配
       if (projectRes.data.outline_json) {
         try {
-          const outlines = JSON.parse(projectRes.data.outlines)
+          const outlines = JSON.parse(projectRes.data.outline_json)
           setProjectOutlines(outlines)
 
           // 根据大纲生成分配数据
@@ -280,6 +281,14 @@ function FormatContent() {
   const totalWords = targetPages * wordsPerPage
 
   const handleSaveFormat = async () => {
+    // 辅助函数：确保错误信息是字符串
+    const getErrorMessage = (detail: any, message: any, fallback: string): string => {
+      if (typeof detail === 'string') return detail
+      if (typeof message === 'string') return message
+      if (typeof fallback === 'string') return fallback
+      return JSON.stringify(detail || message || fallback)
+    }
+
     setSaving(true)
     try {
       // 1. 先保存项目设置，包括自定义样式
@@ -292,17 +301,122 @@ function FormatContent() {
       })
 
       // 2. 创建生成任务，开始调用大模型生成
-      await tasksAPI.createTask(projectId)
+      const token = localStorage.getItem('access_token')
+      // 使用代理路径
+      const apiUrl = `/api/v1/tasks?project_id=${projectId}`
+      console.log('请求 URL:', apiUrl)
+      console.log('Token:', token ? '存在' : '不存在')
+      console.log('Project ID:', projectId)
 
+      let response
+      try {
+        console.log('开始发送请求...')
+        response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          },
+          cache: 'no-store'
+        })
+        console.log('请求完成，状态:', response.status)
+        console.log('响应头:', Array.from(response.headers.entries()))
+      } catch (err: any) {
+        console.error('Fetch 错误:', err)
+        // 检查是否是 CORS 错误
+        const isCorsError = err.message && (
+          err.message.includes('Failed to fetch') ||
+          err.message.includes('NetworkError') ||
+          err.name === 'TypeError'
+        )
+        setErrorModal({
+          show: true,
+          title: '无法开始生成',
+          message: isCorsError
+            ? `网络请求失败，可能是 CORS 跨域问题。请检查后端 CORS 配置。\n错误: ${err.message}`
+            : `网络请求失败: ${err.message}`,
+          solution: '请检查后端服务是否正常运行，刷新页面重试'
+        })
+        return
+      }
+
+      // 检查响应状态和内容类型
+      const contentType = response.headers.get('content-type')
+      if (!response.ok || !contentType?.includes('application/json')) {
+        const errorText = await response.text()
+        console.error('HTTP错误或非JSON响应:', response.status, errorText.substring(0, 500))
+        setErrorModal({
+          show: true,
+          title: '请求失败',
+          message: `服务器返回错误 (${response.status}): ${errorText.substring(0, 200)}`,
+          solution: '请检查后端日志'
+        })
+        return
+      }
+
+      const data = await response.json()
+
+      console.log('创建任务响应状态:', response.status)
+      console.log('创建任务响应头:', Array.from(response.headers.entries()))
+      console.log('创建任务响应:', data)
+
+      // 检查是否有错误（HTTP 状态码非 200）
+      if (!response.ok) {
+        console.error('HTTP 错误:', response.status, data)
+        const errorMsg = getErrorMessage(data.detail, data.message, `HTTP 错误 ${response.status}`)
+        const errorInfo = getErrorInfo(errorMsg)
+        setErrorModal({
+          show: true,
+          title: '无法开始生成',
+          message: errorMsg,
+          solution: errorInfo.solution
+        })
+        return
+      }
+
+      // 检查业务错误码 - 如果响应是任务对象而不是标准格式，可能是后端问题
+      if (!data.code && data.id) {
+        console.error('响应格式异常: 期望 {code, message, data}，实际是任务对象')
+        // 即使响应格式异常，也跳转到生成页面
+        router.push(`/projects/${projectId}/generate`)
+        return
+      }
+
+      // 即使创建失败，也跳转到生成页面查看状态
       // 3. 跳转到生成进度页
       router.push(`/projects/${projectId}/generate`)
     } catch (error: any) {
       console.error('Failed to start generation:', error)
-      const errorMsg = error?.response?.data?.detail || '开始生成失败'
-      alert(errorMsg)
+      const errorMsg = getErrorMessage(error?.response?.data?.detail, error.message, '网络错误')
+      const errorInfo = getErrorInfo(errorMsg)
+      setErrorModal({
+        show: true,
+        title: '无法开始生成',
+        message: errorMsg,
+        solution: errorInfo.solution
+      })
     } finally {
       setSaving(false)
     }
+  }
+
+  // 根据错误信息提供解决方案
+  const getErrorInfo = (errorMsg: string): { solution: string } => {
+    if (errorMsg.includes('API Key') || errorMsg.includes('LLM')) {
+      return { solution: '请联系管理员在后台配置大模型 API Key' }
+    }
+    if (errorMsg.includes('订阅') || errorMsg.includes('额度')) {
+      return { solution: '请前往账户页面购买或续订套餐' }
+    }
+    if (errorMsg.includes('项目状态')) {
+      return { solution: '请确保已完成上传文件和生成大纲步骤' }
+    }
+    if (errorMsg.includes('字数') || errorMsg.includes('额度不足')) {
+      return { solution: '当前剩余字数不足，请联系管理员充值' }
+    }
+    return { solution: '请检查网络连接后重试，或联系技术支持' }
   }
 
   const handleLogout = () => {
@@ -380,28 +494,28 @@ function FormatContent() {
             <h1 className="text-xl font-semibold mb-6">格式与页数设置</h1>
 
             {/* 步骤进度指示器 */}
-            <div className="mb-8">
+            <div className="mb-4">
               <div className="flex items-center justify-center gap-2 text-sm">
                 <span className="flex items-center gap-1 text-green-600">
-                  <span className="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center">✓</span>
-                  上传文件
+                  <span>✓</span> 上传文件
                 </span>
-                <span className="mx-2 text-gray-300">──</span>
+                <span className="text-gray-400 mx-2">→</span>
                 <span className="flex items-center gap-1 text-green-600">
-                  <span className="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center">✓</span>
-                  确认大纲
+                  <span>✓</span> 确认大纲
                 </span>
-                <span className="mx-2 text-gray-300">──</span>
+                <span className="text-gray-400 mx-2">→</span>
                 <span className="flex items-center gap-1 text-[var(--color-primary)] font-medium">
-                  <span className="w-6 h-6 rounded-full bg-[var(--color-primary)] text-white flex items-center justify-center">3</span>
-                  格式设置
+                  <span>③</span> 格式设置
                 </span>
-                <span className="mx-2 text-gray-300">──</span>
-                <span className="flex items-center gap-1 text-gray-400">
-                  <span className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center">4</span>
-                  生成
-                </span>
+                <span className="text-gray-400 mx-2">→</span>
+                <span className="text-gray-400">④ 生成</span>
               </div>
+            </div>
+
+            {/* 项目名称 */}
+            <div className="mb-6 p-4 bg-[var(--color-bg-base)] rounded-lg">
+              <div className="text-sm text-[var(--color-text-secondary)]">项目名称</div>
+              <div className="text-lg font-medium">{project?.title || '加载中...'}</div>
             </div>
 
             <div className="grid grid-cols-2 gap-8">
@@ -800,6 +914,51 @@ function FormatContent() {
                 className="btn-primary"
               >
                 确认
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 错误提示弹窗 */}
+      {errorModal.show && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-lg">
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <span className="text-3xl">⚠️</span>
+                <h3 className="text-lg font-semibold text-red-600">{errorModal.title}</h3>
+              </div>
+
+              <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-4 mb-4">
+                <p className="text-sm text-red-800 dark:text-red-200">{errorModal.message}</p>
+              </div>
+
+              {errorModal.solution && (
+                <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 mb-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-blue-600 dark:text-blue-400">💡</span>
+                    <span className="text-sm font-medium text-blue-800 dark:text-blue-200">解决方案</span>
+                  </div>
+                  <p className="text-sm text-blue-700 dark:text-blue-300">{errorModal.solution}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="px-6 pb-6 flex justify-between gap-3">
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(errorModal.message)
+                }}
+                className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                复制错误信息
+              </button>
+              <button
+                onClick={() => setErrorModal({ show: false, title: '', message: '' })}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg"
+              >
+                关闭
               </button>
             </div>
           </div>

@@ -88,13 +88,22 @@ class LLMService:
                 return await self._call_qianwen(headers, model, messages, temperature, max_tokens)
             elif provider == "moonshot":
                 return await self._call_moonshot(headers, model, messages, temperature, max_tokens)
+            elif provider == "minimax":
+                # MiniMax 专用接口
+                return await self._call_minimax(headers, base_url, model, messages, temperature, max_tokens)
             elif provider == "custom" and base_url:
                 # custom provider直接使用配置的base_url，不做任何处理
                 logger.warning(f"custom provider 直接调用 URL: {base_url}")
+                # 检查是否是 MiniMax 的 URL
+                if "minimax" in base_url.lower():
+                    return await self._call_minimax(headers, base_url, model, messages, temperature, max_tokens)
                 return await self._call_openaiCompatible(headers, base_url, model, messages, temperature, max_tokens)
             elif base_url:
                 # 其他 provider 如果配置了 base_url，也直接使用
                 logger.warning(f"其他 provider 带 base_url 直接调用: {base_url}")
+                # 检查是否是 MiniMax 的 URL
+                if "minimax" in base_url.lower():
+                    return await self._call_minimax(headers, base_url, model, messages, temperature, max_tokens)
                 return await self._call_openaiCompatible(headers, base_url, model, messages, temperature, max_tokens)
             else:
                 # 默认使用OpenAI兼容格式
@@ -227,12 +236,6 @@ class LLMService:
         logger = logging.getLogger(__name__)
         logger.warning(f"API调用 - URL: {base_url}, Model: {model}")
 
-        # 检查是否是 MiniMax API
-        if "minimax" in base_url.lower():
-            # MiniMax 特定格式
-            logger.warning("检测到 MiniMax API，使用特定格式")
-            return await self._call_minimax(headers, base_url, model, messages, temperature, max_tokens)
-
         # 尝试多个代理地址
         proxies_to_try = [
             os.getenv("HTTP_PROXY"),
@@ -284,6 +287,14 @@ class LLMService:
         # 从headers中提取api_key
         api_key = headers.get("Authorization", "").replace("Bearer ", "")
 
+        # 构建请求参数
+        request_params = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens
+        }
+
         # 尝试多个代理地址
         proxies_to_try = [
             os.getenv("HTTP_PROXY"),
@@ -299,26 +310,17 @@ class LLMService:
         for proxy in proxies_to_try:
             try:
                 logger.warning(f"尝试代理: {proxy}")
-                async with httpx.AsyncClient(proxies=proxy, timeout=120, http2=False) as client:
+
+                # 配置更长的超时时间
+                timeout = httpx.Timeout(300.0, connect=30.0)
+                async with httpx.AsyncClient(proxies=proxy, timeout=timeout, http2=False) as client:
                     response = await client.post(
                         base_url,
                         headers={
                             "Authorization": f"Bearer {api_key}",
                             "Content-Type": "application/json"
                         },
-                        json={
-                            "model": model,
-                            "messages": messages,
-                            "temperature": temperature,
-                            "max_tokens": max_tokens,
-                            "bot_setting": [
-                                {
-                                    "bot_id": "master_bot",
-                                    "bot_name": "BidAI智能投标助手",
-                                    "content": "你是一个专业的投标标书编写助手，擅长根据招标文件生成高质量的投标大纲和内容。"
-                                }
-                            ]
-                        }
+                        json=request_params
                     )
                     logger.warning(f"MiniMax API响应 - Status: {response.status_code}")
                     logger.warning(f"MiniMax API响应内容: {response.text[:500]}")
@@ -326,12 +328,22 @@ class LLMService:
                         raise RuntimeError(f"API返回错误: {response.text}")
                     result = response.json()
                     logger.warning(f"解析后的响应: {result}")
-                    if "choices" in result and result["choices"]:
+
+                    # 检查是否有错误响应
+                    if result.get("base_resp", {}).get("status_code") != 0:
+                        error_msg = result.get("base_resp", {}).get("status_msg", "未知错误")
+                        raise RuntimeError(f"MiniMax API返回错误: {error_msg}")
+
+                    # 检查 choices 和 reply
+                    if "choices" in result and result["choices"] and len(result["choices"]) > 0:
                         return result["choices"][0]["message"]["content"]
-                    elif "reply" in result:
+                    elif "reply" in result and result["reply"]:
                         return result["reply"]
                     else:
-                        raise RuntimeError(f"MiniMax API返回格式错误: {result}")
+                        raise RuntimeError(f"MiniMax API返回格式错误，没有有效内容: {result}")
+            except RuntimeError:
+                # 重新抛出 RuntimeError 以便外层捕获
+                raise
             except Exception as e:
                 logger.warning(f"代理 {proxy} 失败: {e}")
                 last_error = e
